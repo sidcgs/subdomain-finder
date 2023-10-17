@@ -1,37 +1,36 @@
-import requests
-import re
-import socket
+#!/bin/bash
 
-def find_subdomains(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        content = response.text
+# Function to resolve the IP address of a subdomain
+resolve_ip() {
+    subdomain="$1"
+    ip_address=$(host "$subdomain" | awk '/has address/ {print $4}')
+    echo "$ip_address"
+}
 
-        # Use regular expressions to find subdomains in the HTML content.
-        subdomains = set(re.findall(r'(?<=https://|http://|www\.)\w+\.\w+', content))
+# Function to find and resolve subdomains
+find_and_resolve_subdomains() {
+    url="$1"
+    content=$(curl -s "$url")
 
-        # Resolve IP addresses for each subdomain
-        subdomain_ip_map = {}
-        for subdomain in subdomains:
-            try:
-                ip_address = socket.gethostbyname(subdomain)
-                subdomain_ip_map[subdomain] = ip_address
-            except socket.gaierror:
-                subdomain_ip_map[subdomain] = "DNS resolution failed"
+    if [ -z "$content" ]; then
+        echo "Error: Unable to fetch website content."
+        exit 1
+    fi
 
-        return subdomain_ip_map
-    except requests.exceptions.RequestException as e:
-        print("Error:", e)
-        return {}
+    subdomains=$(echo "$content" | grep -oE 'https?://[^"/]+' | cut -d'/' -f3 | sort -u)
 
-if __name__ == "__main__":
-    website_url = input("Enter a website URL: ")
-    subdomain_ip_map = find_subdomains(website_url)
+    echo "Subdomains and their IP addresses for $url:"
+    for subdomain in $subdomains; do
+        ip=$(resolve_ip "$subdomain")
+        echo "$subdomain: $ip"
+    done
+}
 
-    if subdomain_ip_map:
-        print(f"Subdomains and their IP addresses for {website_url}:")
-        for subdomain, ip_address in subdomain_ip_map.items():
-            print(f"{subdomain}: {ip_address}")
-    else:
-        print("No subdomains found.")
+# Main script
+if [ $# -eq 1 ]; then
+    find_and_resolve_subdomains "$1"
+else
+    echo "Usage: $0 <website_url>"
+    exit 1
+fi
+
